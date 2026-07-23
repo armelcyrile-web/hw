@@ -1,0 +1,78 @@
+// src/assets/styles/variables.scss
+
+// Couleurs principales (bleu marine / gris ardoise)
+$color-primary: #1e293b; // Slate 800 - titres, navigation
+$color-neutral-dark: #475569; // Slate 600 - texte secondaire
+$color-neutral-light: #f8fafc; // Slate 50 - fonds clairs
+$color-white: #ffffff;
+$color-border: #e2e8f0; // Slate 200
+
+// Couleur d'accent (unique)
+$color-accent: #2563eb; // Blue 600 - actions, liens
+
+// États
+$color-success: #10b981;
+$color-warning: #f59e0b;
+$color-danger: #ef4444;
+
+// Typographie
+$font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+// Espacements
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+
+// Breakpoints responsive
+$breakpoint-tablet: 768px;
+$breakpoint-mobile: 480px;
+
+// Bordures
+$border-radius: 4px;
+
+// src/assets/styles/variables.scss
+
+// Couleurs principales (bleu marine / gris ardoise)
+$color-primary: #1e293b; // Slate 800 - titres, navigation
+$color-neutral-dark: #475569; // Slate 600 - texte secondaire
+$color-neutral-light: #f8fafc; // Slate 50 - fonds clairs
+$color-white: #ffffff;
+$color-border: #e2e8f0; // Slate 200
+
+// Couleur d'accent (unique)
+$color-accent: #2563eb; // Blue 600 - actions, liens
+$color-accent-hover: #1d4ed8; // Blue 700 - hover
+
+// États
+$color-success: #10b981;
+$color-warning: #f59e0b;
+$color-danger: #ef4444;
+
+// Badges de statut
+$badge-success-bg: #dcfce7;   // vert très pâle
+$badge-success-text: #166534; // vert foncé
+$badge-danger-bg: #fee2e2;    // rouge très pâle
+$badge-danger-text: #991b1b;  // rouge foncé
+$badge-neutral-bg: #f3f4f6;   // gris très pâle
+$badge-neutral-text: #4b5563; // gris moyen
+
+// Typographie
+$font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+// Espacements
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+
+// Breakpoints responsive
+$breakpoint-tablet: 768px;
+$breakpoint-mobile: 480px;
+
+// Bordures
+$border-radius: 4px;
