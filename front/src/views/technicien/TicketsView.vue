@@ -6,7 +6,7 @@ import api from '@/services/api'
 import { notifySuccess, notifyError, confirmAction } from '@/services/alert'
 
 const router = useRouter()
-const filtreActif = ref('tous') // 'tous', 'nouveaux', 'urgents'
+const filtreActif = ref('tous')
 const tickets = ref([])
 const loading = ref(false)
 
@@ -28,7 +28,6 @@ async function fetchTickets() {
   }
 }
 
-// Surveiller le changement de filtre
 watch(filtreActif, () => {
   fetchTickets()
 })
@@ -48,12 +47,10 @@ async function prendreEnCharge(ticketId) {
   try {
     await api.post(`/staff/tickets/${ticketId}/prendre-en-charge`)
     notifySuccess('Ticket pris en charge.')
-    // Rafraîchir la liste
     await fetchTickets()
   } catch (error) {
     const message = error.response?.data?.message || 'Erreur lors de la prise en charge'
     notifyError(message)
-    // On rafraîchit quand même pour refléter l'état réel
     await fetchTickets()
   }
 }
@@ -81,7 +78,6 @@ onMounted(fetchTickets)
 
 <template>
   <div class="tickets-view">
-    <!-- En-tête et filtres -->
     <div class="top-bar">
       <h2 class="page-title">Tickets</h2>
       <div class="filters">
@@ -96,7 +92,6 @@ onMounted(fetchTickets)
       </div>
     </div>
 
-    <!-- État chargement / vide -->
     <div v-if="loading" class="state-message">Chargement...</div>
     <template v-else>
       <div v-if="tickets.length === 0" class="state-message">
@@ -105,7 +100,6 @@ onMounted(fetchTickets)
         <template v-else>Aucun ticket trouvé.</template>
       </div>
 
-      <!-- Version desktop : tableau -->
       <div v-else class="table-wrapper desktop-only">
         <table class="tickets-table">
           <thead>
@@ -163,7 +157,6 @@ onMounted(fetchTickets)
         </table>
       </div>
 
-      <!-- Version mobile : cartes -->
       <div class="mobile-cards mobile-only">
         <div
           v-for="ticket in tickets"
@@ -211,7 +204,6 @@ onMounted(fetchTickets)
 @use "sass:color";
 @use '@/assets/styles/variables.scss' as *;
 
-// Additional badge colors for priorities
 $badge-basse-bg: #f3f4f6;
 $badge-basse-text: #4b5563;
 $badge-normale-bg: #e0f2fe;
@@ -248,7 +240,6 @@ $badge-urgente-text: #991b1b;
   gap: $spacing-xs;
   overflow-x: auto;
   white-space: nowrap;
-  -webkit-overflow-scrolling: touch;
 }
 
 .filter-btn {
@@ -278,7 +269,24 @@ $badge-urgente-text: #991b1b;
   padding: $spacing-xl;
 }
 
-// Desktop table
+.desktop-only {
+  display: block;
+}
+@media (max-width: $breakpoint-tablet) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+.mobile-only {
+  display: none;
+}
+@media (max-width: $breakpoint-tablet) {
+  .mobile-only {
+    display: block;
+  }
+}
+
 .table-wrapper {
   background: $color-white;
   border: 1px solid $color-border;
@@ -330,7 +338,6 @@ $badge-urgente-text: #991b1b;
 .col-origine { width: 80px; }
 .col-action { text-align: right; }
 
-// Badges
 .badge {
   display: inline-block;
   padding: 0.15rem 0.6rem;
@@ -357,7 +364,6 @@ $badge-urgente-text: #991b1b;
   }
 }
 
-// Buttons
 .btn {
   padding: 0.35rem 0.9rem;
   border-radius: $border-radius;
@@ -382,19 +388,6 @@ $badge-urgente-text: #991b1b;
   color: $color-neutral-dark;
   &:hover {
     background-color: $color-neutral-light;
-  }
-}
-
-// Mobile cards
-.mobile-only {
-  display: none;
-  @media (max-width: $breakpoint-tablet) {
-    display: block;
-  }
-}
-.desktop-only {
-  @media (max-width: $breakpoint-tablet) {
-    display: none;
   }
 }
 

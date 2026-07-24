@@ -14,48 +14,32 @@ class NouveauTicketNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    /**
-     * Create a new notification instance.
-     */
-    public function __construct(public Ticket $ticket)
-    {
-    }
+    public function __construct(public Ticket $ticket) {}
 
-    /**
-     * Get the notification's delivery channels.
-     *
-     * Choix d'implémentation : on détermine les canaux en fonction du rôle du destinataire.
-     * - Si le destinataire est le client propriétaire du ticket -> database uniquement (confirmation in-app).
-     * - Sinon (technicien ou admin) -> mail + database (alerte).
-     */
     public function via(object $notifiable): array
     {
         if ($notifiable->role->value === 'client') {
             return ['database'];
         }
-
         return ['mail', 'database'];
     }
 
-    /**
-     * Get the mail representation of the notification.
-     */
     public function toMail(object $notifiable): MailMessage
     {
+        $url = config('app.frontend_url') . '/technicien/tickets/' . $this->ticket->id;
+
         return (new MailMessage)
-            ->subject('Nouveau ticket : '.$this->ticket->titre)
-            ->line('Un nouveau ticket a été créé.')
-            ->line('Site : '.$this->ticket->site->nom.' ('.$this->ticket->site->url.')')
-            ->line('Titre : '.$this->ticket->titre)
-            ->line('Priorité : '.$this->ticket->priorite->value)
-            ->line('Origine : '.$this->ticket->origine->value)
-            ->line('Description : '.$this->ticket->description)
-            ->action('Voir le ticket', url('/tickets/'.$this->ticket->id));
+            ->subject('HostWatch - Nouveau ticket sur ' . $this->ticket->site->nom)
+            ->greeting('Bonjour ' . $notifiable->prenom . ',')
+            ->line('Un nouveau ticket a été créé sur le site **' . $this->ticket->site->nom . '** (' . $this->ticket->site->url . ').')
+            ->line('**Titre :** ' . $this->ticket->titre)
+            ->line('**Priorité :** ' . $this->ticket->priorite->value)
+            ->line('**Origine :** ' . ($this->ticket->origine->value === 'automatique' ? 'Surveillance automatique' : 'Signalement manuel'))
+            ->line('Vous pouvez consulter le détail et prendre les mesures nécessaires.')
+            ->action('Voir le ticket', $url)
+            ->salutation('L\'équipe HostWatch');
     }
 
-    /**
-     * Get the array representation of the notification (for database).
-     */
     public function toArray(object $notifiable): array
     {
         return [
@@ -63,7 +47,7 @@ class NouveauTicketNotification extends Notification implements ShouldQueue
             'titre'     => $this->ticket->titre,
             'site_nom'  => $this->ticket->site->nom,
             'priorite'  => $this->ticket->priorite->value,
-            'message'   => 'Un nouveau ticket a été créé pour le site '.$this->ticket->site->nom.'.',
+            'message'   => 'Un nouveau ticket a été créé pour le site ' . $this->ticket->site->nom . '.',
         ];
     }
 }

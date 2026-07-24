@@ -1,5 +1,7 @@
 <?php
 
+// config/mail.php
+
 return [
 
     /*
@@ -113,6 +115,23 @@ return [
     'from' => [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Markdown Mail Settings
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure the theme used for Markdown formatted emails.
+    | You may also specify the paths where the mail views can be found.
+    |
+    */
+
+    'markdown' => [
+        'theme' => 'hostwatch',
+        'paths' => [
+            resource_path('views/vendor/mail'),
+        ],
     ],
 
 ];

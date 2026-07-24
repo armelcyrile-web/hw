@@ -28,7 +28,6 @@ async function fetchTicket() {
 }
 
 async function resoudre() {
-  // Demander un commentaire de résolution
   const { value: commentaire } = await Swal.fire({
     title: 'Résoudre le ticket',
     input: 'text',
@@ -42,7 +41,7 @@ async function resoudre() {
       cancelButton: 'swal2-cancel-btn'
     }
   })
-  if (commentaire === undefined) return // Annulé
+  if (commentaire === undefined) return
 
   const confirmed = await confirmAction({
     titre: 'Confirmer la résolution',
@@ -77,7 +76,6 @@ async function liberer() {
   }
 }
 
-// Vérifier si l'utilisateur peut résoudre/libérer
 function peutAgir() {
   if (!ticket.value) return false
   if (ticket.value.statut !== 'assigne') return false
@@ -106,7 +104,6 @@ onMounted(fetchTicket)
     <div v-if="loading" class="state-message">Chargement...</div>
 
     <div v-else-if="ticket" class="detail-card">
-      <!-- En-tête -->
       <div class="detail-header">
         <h2 class="ticket-title">#{{ ticket.id }} — {{ ticket.titre }}</h2>
         <div class="header-badges">
@@ -119,7 +116,6 @@ onMounted(fetchTicket)
         </div>
       </div>
 
-      <!-- Infos principales -->
       <div class="info-grid">
         <div class="info-item">
           <span class="info-label">Site</span>
@@ -147,13 +143,11 @@ onMounted(fetchTicket)
         </div>
       </div>
 
-      <!-- Description -->
       <div class="description-section">
         <h3>Description</h3>
         <p class="description-text">{{ ticket.description }}</p>
       </div>
 
-      <!-- Historique -->
       <div v-if="ticket.historique?.length" class="history-section">
         <h3>Historique d'intervention</h3>
         <ul class="history-list">
@@ -171,7 +165,6 @@ onMounted(fetchTicket)
         </ul>
       </div>
 
-      <!-- Actions -->
       <div v-if="peutAgir()" class="actions">
         <button class="btn btn-resoudre" @click="resoudre">Résoudre le ticket</button>
         <button class="btn btn-liberer" @click="liberer">Libérer le ticket</button>
@@ -338,10 +331,6 @@ onMounted(fetchTicket)
 
 .history-details {
   font-size: 0.8rem;
-  color: $color-neutral-dark;
-}
-
-.history-date, .history-duree, .history-comment {
   color: $color-neutral-dark;
 }
 

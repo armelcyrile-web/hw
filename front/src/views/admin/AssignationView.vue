@@ -1,8 +1,11 @@
 <!-- src/views/admin/AssignationView.vue -->
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import api from '@/services/api'
 import { notifySuccess, notifyError, confirmAction } from '@/services/alert'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const tickets = ref([])
 const techniciens = ref([])
@@ -11,7 +14,6 @@ const showModal = ref(false)
 const selectedTicket = ref(null)
 const selectedTechnicienId = ref('')
 
-// Charger les tickets non assignés
 async function fetchTickets() {
   try {
     const response = await api.get('/tickets', { params: { statut: 'nouveau' } })
@@ -23,7 +25,6 @@ async function fetchTickets() {
   }
 }
 
-// Charger la liste des techniciens
 async function fetchTechniciens() {
   try {
     const response = await api.get('/admin/users', { params: { role: 'technicien' } })
@@ -33,7 +34,6 @@ async function fetchTechniciens() {
   }
 }
 
-// Ouvrir la modale d'assignation
 function openAssignModal(ticket) {
   selectedTicket.value = ticket
   selectedTechnicienId.value = ''
@@ -45,13 +45,40 @@ function closeModal() {
   selectedTicket.value = null
 }
 
-// Assigner le ticket
 async function assignTicket() {
   if (!selectedTechnicienId.value) {
-    notifyError('Veuillez sélectionner un technicien.')
+    notifyError('Veuillez sélectionner un technicien ou vous-même.')
     return
   }
 
+  // Si l'admin choisit "Moi-même", utiliser la prise en charge directe
+  if (selectedTechnicienId.value == authStore.user.id) {
+    await selfAssign()
+  } else {
+    await assignToTechnicien()
+  }
+}
+
+async function selfAssign() {
+  const confirmed = await confirmAction({
+    titre: 'Prendre en charge',
+    texte: 'Voulez-vous prendre en charge ce ticket vous-même ?',
+    texteConfirmation: 'Prendre en charge'
+  })
+  if (!confirmed) return
+
+  try {
+    await api.post(`/staff/tickets/${selectedTicket.value.id}/prendre-en-charge`)
+    notifySuccess('Ticket pris en charge.')
+    closeModal()
+    await fetchTickets()
+  } catch (error) {
+    const message = error.response?.data?.message || 'Erreur lors de la prise en charge.'
+    notifyError(message)
+  }
+}
+
+async function assignToTechnicien() {
   const technicien = techniciens.value.find(t => t.id == selectedTechnicienId.value)
   const technicienNom = technicien ? `${technicien.prenom} ${technicien.nom}` : 'sélectionné'
 
@@ -68,14 +95,13 @@ async function assignTicket() {
     })
     notifySuccess('Ticket assigné avec succès.')
     closeModal()
-    await fetchTickets() // rafraîchir la liste
+    await fetchTickets()
   } catch (error) {
     const message = error.response?.data?.message || 'Erreur lors de l\'assignation.'
     notifyError(message)
   }
 }
 
-// Calcul du temps d'attente
 function tempsAttente(dateCreation) {
   const creation = new Date(dateCreation)
   const maintenant = new Date()
@@ -88,7 +114,6 @@ function tempsAttente(dateCreation) {
   return `${diffJours} jour(s)`
 }
 
-// Badge priorité
 function prioriteClass(priorite) {
   switch (priorite) {
     case 'basse': return 'badge-basse'
@@ -98,8 +123,6 @@ function prioriteClass(priorite) {
   }
 }
 
-// TODO améliorer si le backend expose la charge par technicien via /api/stats
-// pour l'instant on affiche seulement le nom
 function technicienLabel(tech) {
   return `${tech.prenom} ${tech.nom}`
 }
@@ -120,7 +143,6 @@ onMounted(async () => {
         Aucun ticket en attente d'assignation. Tout est sous contrôle.
       </div>
 
-      <!-- Desktop table -->
       <div v-else class="table-wrapper desktop-only">
         <table class="tickets-table">
           <thead>
@@ -150,7 +172,6 @@ onMounted(async () => {
         </table>
       </div>
 
-      <!-- Mobile cards -->
       <div class="mobile-cards mobile-only">
         <div v-for="ticket in tickets" :key="ticket.id" class="ticket-card">
           <div class="card-top">
@@ -167,7 +188,6 @@ onMounted(async () => {
       </div>
     </template>
 
-    <!-- Modale d'assignation -->
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
@@ -188,14 +208,11 @@ onMounted(async () => {
                 <label for="technicien">Assigner à</label>
                 <select v-model="selectedTechnicienId" id="technicien" class="form-select" required>
                   <option value="" disabled>Sélectionner un technicien</option>
+                  <option :value="authStore.user.id">Moi-même (Administrateur)</option>
                   <option v-for="tech in techniciens" :key="tech.id" :value="tech.id">
                     {{ technicienLabel(tech) }}
                   </option>
                 </select>
-                <!-- TODO améliorer si le backend expose la charge par technicien via /api/stats -->
-                <p class="hint" v-if="selectedTechnicienId">
-                  <!-- Ici on pourrait afficher la charge en cours -->
-                </p>
               </div>
 
               <div class="modal-actions">
@@ -214,7 +231,6 @@ onMounted(async () => {
 @use "sass:color";
 @use '@/assets/styles/variables.scss' as *;
 
-// Priorité badges
 $badge-basse-bg: #f3f4f6;
 $badge-basse-text: #4b5563;
 $badge-normale-bg: #e0f2fe;
@@ -246,7 +262,6 @@ $badge-urgente-text: #991b1b;
   }
 }
 
-// Desktop only
 .desktop-only {
   display: block;
 }
@@ -256,7 +271,6 @@ $badge-urgente-text: #991b1b;
   }
 }
 
-// Mobile only
 .mobile-only {
   display: none;
 }
@@ -266,7 +280,6 @@ $badge-urgente-text: #991b1b;
   }
 }
 
-// Tableau
 .table-wrapper {
   background: $color-white;
   border: 1px solid $color-border;
@@ -311,7 +324,6 @@ $badge-urgente-text: #991b1b;
 .col-titre { max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .col-action { text-align: right; }
 
-// Badges
 .badge {
   display: inline-block;
   padding: 0.15rem 0.6rem;
@@ -325,7 +337,6 @@ $badge-urgente-text: #991b1b;
 .badge-normale { background-color: $badge-normale-bg; color: $badge-normale-text; }
 .badge-urgente { background-color: $badge-urgente-bg; color: $badge-urgente-text; }
 
-// Boutons
 .btn {
   padding: 0.35rem 0.9rem;
   border-radius: $border-radius;
@@ -358,7 +369,6 @@ $badge-urgente-text: #991b1b;
   }
 }
 
-// Mobile cards
 .mobile-cards {
   display: flex;
   flex-direction: column;
@@ -390,7 +400,6 @@ $badge-urgente-text: #991b1b;
 .card-title { color: $color-neutral-dark; }
 .card-attente { color: $color-neutral-dark; font-size: 0.8rem; }
 
-// Modale
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -449,7 +458,6 @@ $badge-urgente-text: #991b1b;
   flex-direction: column;
   gap: $spacing-xs;
   label { font-weight: 500; color: $color-primary; font-size: 0.9rem; }
-  .hint { font-size: 0.8rem; color: $color-neutral-dark; }
 }
 
 .form-select {
@@ -471,7 +479,6 @@ $badge-urgente-text: #991b1b;
   }
 }
 
-// Transition modale
 .modal-enter-active, .modal-leave-active {
   transition: opacity 0.2s ease;
   .modal-content {

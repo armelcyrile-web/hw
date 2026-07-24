@@ -14,16 +14,8 @@ class TicketLibereNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    /**
-     * Create a new notification instance.
-     */
-    public function __construct(public Ticket $ticket)
-    {
-    }
+    public function __construct(public Ticket $ticket) {}
 
-    /**
-     * Cette notification n'est jamais envoyée à un client, mais par sécurité on filtre tout de même.
-     */
     public function via(object $notifiable): array
     {
         return ['mail', 'database'];
@@ -31,16 +23,17 @@ class TicketLibereNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $quiALibere = $this->ticket->technicien_id
-            ? $this->ticket->technicien->nom.' '.$this->ticket->technicien->prenom
-            : 'Administrateur';
+        $url = config('app.frontend_url') . '/technicien/tickets/' . $this->ticket->id;
 
         return (new MailMessage)
-            ->subject('Ticket libéré : '.$this->ticket->titre)
-            ->line('Le ticket a été libéré et remis dans la file d\'attente.')
-            ->line('Site : '.$this->ticket->site->nom)
-            ->line('Libéré par : '.$quiALibere)
-            ->action('Voir le ticket', url('/tickets/'.$this->ticket->id));
+            ->subject('HostWatch - Ticket libéré sur ' . $this->ticket->site->nom)
+            ->greeting('Bonjour ' . $notifiable->prenom . ',')
+            ->line('Le ticket du site **' . $this->ticket->site->nom . '** a été libéré et est de nouveau ouvert.')
+            ->line('**Titre :** ' . $this->ticket->titre)
+            ->line('Il est désormais à la disposition de toute l\'équipe technique.')
+            ->line('Merci de le prendre en charge si vous êtes disponible.')
+            ->action('Voir le ticket', $url)
+            ->salutation('L\'équipe HostWatch');
     }
 
     public function toArray(object $notifiable): array
