@@ -3,13 +3,11 @@
 import { ref, onMounted, computed } from 'vue'
 import api from '@/services/api'
 import { notifyError } from '@/services/alert'
-import { Line, Bar } from 'vue-chartjs'
+import { Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   BarElement,
   Title,
   Tooltip,
@@ -19,8 +17,6 @@ import {
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   BarElement,
   Title,
   Tooltip,
@@ -56,62 +52,20 @@ function formatTemps(minutes) {
   return `${minutes} min`
 }
 
-// Graphique d'évolution
-const evolutionData = computed(() => {
-  if (!stats.value?.evolution_tickets) return null
-  const dates = stats.value.evolution_tickets.map(item => {
-    const d = new Date(item.date)
-    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-  })
-  const totals = stats.value.evolution_tickets.map(item => item.total)
-  return {
-    labels: dates,
-    datasets: [
-      {
-        label: 'Tickets créés',
-        data: totals,
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37, 99, 235, 0.05)',
-        pointBackgroundColor: '#2563eb',
-        pointRadius: 2,
-        pointHoverRadius: 4,
-        borderWidth: 2,
-        tension: 0.3,
-        fill: true
-      }
-    ]
-  }
+// Évolution des 7 derniers jours (barres CSS)
+const derniersJours = computed(() => {
+  if (!stats.value?.evolution_tickets) return []
+  // Prendre les 7 derniers éléments du tableau (30 jours fournis)
+  return stats.value.evolution_tickets.slice(-7)
 })
 
-const evolutionOptions = computed(() => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      display: false
-    }
-  },
-  scales: {
-    x: {
-      ticks: {
-        maxTicksLimit: 10,
-        font: { size: 10 }
-      },
-      grid: {
-        display: false
-      }
-    },
-    y: {
-      beginAtZero: true,
-      ticks: {
-        precision: 0,
-        font: { size: 10 }
-      }
-    }
-  }
-}))
+// Calculer le maximum pour les proportions des barres
+const maxTickets = computed(() => {
+  if (!derniersJours.value.length) return 1
+  return Math.max(...derniersJours.value.map(item => item.total), 1)
+})
 
-// Graphique de charge par technicien
+// Graphique de charge par technicien (Bar chart)
 const chargeData = computed(() => {
   if (!stats.value?.charge_par_technicien?.length) return null
   const labels = stats.value.charge_par_technicien.map(t => `${t.prenom} ${t.nom}`)
@@ -229,13 +183,24 @@ onMounted(fetchStats)
 
       <!-- Graphiques -->
       <div class="charts-section">
+        <!-- Évolution des 7 derniers jours (barres CSS) -->
         <div class="chart-container">
-          <h3>Évolution des tickets (30 jours)</h3>
-          <div class="chart-wrapper">
-            <Line v-if="evolutionData" :data="evolutionData" :options="evolutionOptions" />
+          <h3>Tickets créés ces 7 derniers jours</h3>
+          <div class="bar-list">
+            <div v-for="jour in derniersJours" :key="jour.date" class="bar-item">
+              <span class="bar-date">{{ new Date(jour.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) }}</span>
+              <div class="bar-track">
+                <div
+                  class="bar-fill"
+                  :style="{ width: (jour.total / maxTickets * 100) + '%' }"
+                ></div>
+              </div>
+              <span class="bar-value">{{ jour.total }}</span>
+            </div>
           </div>
         </div>
 
+        <!-- Charge par technicien (Bar chart) -->
         <div class="chart-container">
           <h3>Charge par technicien</h3>
           <div class="chart-wrapper">
@@ -276,7 +241,7 @@ onMounted(fetchStats)
 @use "sass:color";
 @use '@/assets/styles/variables.scss' as *;
 
-// Badge colors (same as other views)
+// Badge colors
 $badge-basse-bg: #f3f4f6;
 $badge-basse-text: #4b5563;
 $badge-normale-bg: #e0f2fe;
@@ -372,6 +337,49 @@ $badge-resolu-text: #166534;
     color: $color-primary;
     margin-bottom: $spacing-sm;
   }
+}
+
+// Barres CSS pour les 7 jours
+.bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bar-date {
+  width: 50px;
+  font-size: 0.85rem;
+  color: $color-neutral-dark;
+  text-align: right;
+}
+
+.bar-track {
+  flex: 1;
+  height: 20px;
+  background-color: $color-neutral-light;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background-color: $color-accent;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.bar-value {
+  width: 30px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: $color-primary;
+  text-align: left;
 }
 
 .chart-wrapper {

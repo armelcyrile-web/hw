@@ -1,58 +1,44 @@
-<!-- src/views/technicien/TicketsView.vue -->
+<!-- src/views/client/TicketsView.vue -->
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
-import { notifySuccess, notifyError, confirmAction } from '@/services/alert'
+import { notifyError } from '@/services/alert'
 
 const router = useRouter()
-const filtreActif = ref('tous')
+
 const tickets = ref([])
-const loading = ref(false)
+const loading = ref(true)
+const ticketSelectionne = ref(null)
+const loadingDetail = ref(false)
 
 async function fetchTickets() {
   loading.value = true
   try {
-    const params = {}
-    if (filtreActif.value === 'nouveaux') {
-      params.statut = 'nouveau'
-    } else if (filtreActif.value === 'urgents') {
-      params.priorite = 'urgente'
-    }
-    const response = await api.get('/tickets', { params })
+    const response = await api.get('/tickets')
     tickets.value = response.data.data
   } catch (error) {
-    notifyError('Erreur lors du chargement des tickets.')
+    notifyError('Erreur lors du chargement de vos tickets.')
   } finally {
     loading.value = false
   }
 }
 
-watch(filtreActif, () => {
-  fetchTickets()
-})
-
-function goToDetail(ticketId) {
-  router.push(`/technicien/tickets/${ticketId}`)
+async function selectTicket(ticketId) {
+  loadingDetail.value = true
+  try {
+    const response = await api.get(`/tickets/${ticketId}`)
+    ticketSelectionne.value = response.data.data
+  } catch (error) {
+    notifyError('Impossible de charger le détail du ticket.')
+    ticketSelectionne.value = null
+  } finally {
+    loadingDetail.value = false
+  }
 }
 
-async function prendreEnCharge(ticketId) {
-  const confirmed = await confirmAction({
-    titre: 'Prendre en charge',
-    texte: 'Voulez-vous vous assigner ce ticket ?',
-    texteConfirmation: 'Confirmer'
-  })
-  if (!confirmed) return
-
-  try {
-    await api.post(`/staff/tickets/${ticketId}/prendre-en-charge`)
-    notifySuccess('Ticket pris en charge.')
-    await fetchTickets()
-  } catch (error) {
-    const message = error.response?.data?.message || 'Erreur lors de la prise en charge'
-    notifyError(message)
-    await fetchTickets()
-  }
+function retourListe() {
+  ticketSelectionne.value = null
 }
 
 function statutClass(statut) {
@@ -64,143 +50,105 @@ function statutClass(statut) {
   }
 }
 
-function prioriteClass(priorite) {
-  switch (priorite) {
-    case 'basse': return 'badge-basse'
-    case 'normale': return 'badge-normale'
-    case 'urgente': return 'badge-urgente'
-    default: return ''
+function statutLabel(statut) {
+  switch (statut) {
+    case 'nouveau': return 'Nouveau'
+    case 'assigne': return 'Assigné'
+    case 'resolu': return 'Résolu'
+    default: return statut
   }
+}
+
+function formatDate(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 onMounted(fetchTickets)
 </script>
 
 <template>
-  <div class="tickets-view">
-    <!-- En-tête et filtres -->
-    <div class="top-bar">
-      <h2 class="page-title">Tickets</h2>
-      <div class="filters">
-        <button
-          v-for="f in [{ key: 'tous', label: 'Tous' }, { key: 'nouveaux', label: 'Nouveaux' }, { key: 'urgents', label: 'Urgents' }]"
-          :key="f.key"
-          :class="['filter-btn', { active: filtreActif === f.key }]"
-          @click="filtreActif = f.key"
-        >
-          {{ f.label }}
-        </button>
-      </div>
-    </div>
-
-    <!-- État chargement / vide -->
-    <div v-if="loading" class="state-message">Chargement...</div>
-    <template v-else>
-      <div v-if="tickets.length === 0" class="state-message">
-        <template v-if="filtreActif === 'nouveaux'">Aucun ticket nouveau pour le moment.</template>
-        <template v-else-if="filtreActif === 'urgents'">Aucun ticket urgent.</template>
-        <template v-else>Aucun ticket trouvé.</template>
-      </div>
-
-      <!-- Version desktop : tableau (visible uniquement au-dessus de 768px) -->
-      <div v-else class="table-wrapper desktop-only">
-        <table class="tickets-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Site</th>
-              <th>Titre</th>
-              <th>Priorité</th>
-              <th>Origine</th>
-              <th>Statut</th>
-              <th class="action-col">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="ticket in tickets"
-              :key="ticket.id"
-              class="ticket-row"
-              @click="goToDetail(ticket.id)"
-            >
-              <td class="col-id">#{{ ticket.id }}</td>
-              <td class="col-site">{{ ticket.site?.nom || '—' }}</td>
-              <td class="col-titre">{{ ticket.titre }}</td>
-              <td>
-                <span class="badge" :class="prioriteClass(ticket.priorite)">{{ ticket.priorite }}</span>
-              </td>
-              <td class="col-origine">
-                <span class="origine-tag" :class="{ automatique: ticket.origine === 'automatique' }">
-                  {{ ticket.origine === 'automatique' ? 'Auto' : 'Manuel' }}
-                </span>
-              </td>
-              <td>
+  <div class="tickets-page">
+    <!-- Liste des tickets (toujours visible) -->
+    <div class="tickets-list-panel" :class="{ 'is-hidden-mobile': ticketSelectionne && isMobile }">
+      <h2 class="page-title">Mes tickets</h2>
+      <div v-if="loading" class="state-message">Chargement...</div>
+      <template v-else>
+        <div v-if="tickets.length === 0" class="empty-state">
+          <p>Vous n'avez pas encore de ticket.</p>
+          <button class="btn btn-primary" @click="router.push('/client/tickets/nouveau')">
+            Ouvrir un ticket
+          </button>
+        </div>
+        <div v-else class="list-container">
+          <div
+            v-for="ticket in tickets"
+            :key="ticket.id"
+            class="ticket-item"
+            :class="{ 'is-active': ticketSelectionne?.id === ticket.id }"
+            @click="selectTicket(ticket.id)"
+          >
+            <div class="item-id">#{{ ticket.id }}</div>
+            <div class="item-content">
+              <div class="item-title">{{ ticket.titre }}</div>
+              <div class="item-meta">
                 <span class="badge" :class="statutClass(ticket.statut)">
-                  {{ ticket.statut === 'nouveau' ? 'Nouveau' : ticket.statut === 'assigne' ? 'Assigné' : 'Résolu' }}
+                  {{ statutLabel(ticket.statut) }}
                 </span>
-              </td>
-              <td class="col-action" @click.stop>
-                <button
-                  v-if="ticket.statut === 'nouveau'"
-                  class="btn btn-take"
-                  @click="prendreEnCharge(ticket.id)"
-                >
-                  Prendre en charge
-                </button>
-                <button
-                  v-else
-                  class="btn btn-detail"
-                  @click="goToDetail(ticket.id)"
-                >
-                  Voir détail
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Version mobile : cartes (visible uniquement en dessous de 768px) -->
-      <div class="mobile-cards mobile-only">
-        <div
-          v-for="ticket in tickets"
-          :key="ticket.id"
-          class="ticket-card"
-          @click="goToDetail(ticket.id)"
-        >
-          <div class="card-top">
-            <span class="card-id">#{{ ticket.id }}</span>
-            <span class="card-titre">{{ ticket.titre }}</span>
-          </div>
-          <div class="card-badges">
-            <span class="badge" :class="prioriteClass(ticket.priorite)">{{ ticket.priorite }}</span>
-            <span class="badge" :class="statutClass(ticket.statut)">
-              {{ ticket.statut === 'nouveau' ? 'Nouveau' : ticket.statut === 'assigne' ? 'Assigné' : 'Résolu' }}
-            </span>
-            <span class="origine-tag" :class="{ automatique: ticket.origine === 'automatique' }">
-              {{ ticket.origine === 'automatique' ? 'Auto' : 'Manuel' }}
-            </span>
-            <span class="card-site">{{ ticket.site?.nom }}</span>
-          </div>
-          <div class="card-action" @click.stop>
-            <button
-              v-if="ticket.statut === 'nouveau'"
-              class="btn btn-take"
-              @click="prendreEnCharge(ticket.id)"
-            >
-              Prendre en charge
-            </button>
-            <button
-              v-else
-              class="btn btn-detail"
-              @click="goToDetail(ticket.id)"
-            >
-              Voir détail
-            </button>
+                <span class="item-date">{{ formatDate(ticket.date_creation) }}</span>
+              </div>
+            </div>
           </div>
         </div>
+      </template>
+    </div>
+
+    <!-- Panneau de détail -->
+    <div class="ticket-detail-panel" :class="{ 'is-visible-mobile': ticketSelectionne }">
+      <div v-if="!ticketSelectionne" class="state-message desktop-only">
+        Sélectionnez un ticket pour voir le détail
       </div>
-    </template>
+      <template v-else>
+        <div class="detail-header">
+          <button class="btn-retour" @click="retourListe">
+            ← Retour à la liste
+          </button>
+        </div>
+        <div v-if="loadingDetail" class="state-message">Chargement du détail...</div>
+        <div v-else class="detail-content">
+          <div class="detail-top">
+            <h3>{{ ticketSelectionne.titre }}</h3>
+            <span class="badge" :class="statutClass(ticketSelectionne.statut)">
+              {{ statutLabel(ticketSelectionne.statut) }}
+            </span>
+          </div>
+          <div class="detail-infos">
+            <p><strong>Site :</strong> {{ ticketSelectionne.site?.nom }}</p>
+            <p><strong>Priorité :</strong> {{ ticketSelectionne.priorite }}</p>
+            <p><strong>Ouvert le :</strong> {{ formatDate(ticketSelectionne.date_creation) }}</p>
+            <p v-if="ticketSelectionne.date_resolution"><strong>Résolu le :</strong> {{ formatDate(ticketSelectionne.date_resolution) }}</p>
+          </div>
+          <div class="detail-description">
+            <h4>Description</h4>
+            <p>{{ ticketSelectionne.description }}</p>
+          </div>
+          <!-- Historique -->
+          <div v-if="ticketSelectionne.historique?.length" class="detail-history">
+            <h4>Historique</h4>
+            <ul>
+              <li v-for="h in ticketSelectionne.historique" :key="h.id">
+                <span class="history-action">{{ h.type_action }}</span>
+                <span class="history-user" v-if="h.utilisateur"> par {{ h.utilisateur.nom }} {{ h.utilisateur.prenom }}</span>
+                <span class="history-date"> le {{ formatDate(h.date_action) }}</span>
+                <span v-if="h.duree_intervention"> ({{ h.duree_intervention }} min)</span>
+                <span v-if="h.commentaire"> - {{ h.commentaire }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -208,65 +156,43 @@ onMounted(fetchTickets)
 @use "sass:color";
 @use '@/assets/styles/variables.scss' as *;
 
-// Additional badge colors for priorities
-$badge-basse-bg: #f3f4f6;
-$badge-basse-text: #4b5563;
-$badge-normale-bg: #e0f2fe;
-$badge-normale-text: #075985;
-$badge-urgente-bg: #fee2e2;
-$badge-urgente-text: #991b1b;
+// Badge colors for ticket status
+$badge-nouveau-bg: #dbeafe;
+$badge-nouveau-text: #1e40af;
+$badge-assigne-bg: #fef3c7;
+$badge-assigne-text: #92400e;
+$badge-resolu-bg: #dcfce7;
+$badge-resolu-text: #166534;
 
-.tickets-view {
+.tickets-page {
+  display: grid;
+  grid-template-columns: 35% 65%;
+  min-height: calc(100vh - 64px); // navbar height
   background-color: $color-neutral-light;
-  padding: $spacing-lg $spacing-md;
-  min-height: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
+  @media (max-width: $breakpoint-tablet) {
+    grid-template-columns: 1fr;
+  }
 }
 
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: $spacing-lg;
-  flex-wrap: wrap;
-  gap: $spacing-sm;
+.tickets-list-panel {
+  border-right: 1px solid $color-border;
+  background: $color-white;
+  padding: $spacing-lg;
+  overflow-y: auto;
+  @media (max-width: $breakpoint-tablet) {
+    border-right: none;
+    padding: $spacing-md;
+    &.is-hidden-mobile {
+      display: none; // on mobile, hide list when detail is shown
+    }
+  }
 }
 
 .page-title {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 600;
   color: $color-primary;
-  margin: 0;
-}
-
-.filters {
-  display: flex;
-  gap: $spacing-xs;
-  overflow-x: auto;
-  white-space: nowrap;
-  -webkit-overflow-scrolling: touch;
-}
-
-.filter-btn {
-  background: none;
-  border: none;
-  padding: 0.4rem 1rem;
-  border-radius: $border-radius;
-  font-family: $font-family;
-  font-size: 0.9rem;
-  color: $color-neutral-dark;
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
-  &.active {
-    background-color: $color-white;
-    color: $color-primary;
-    font-weight: 500;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-  }
-  &:hover:not(.active) {
-    background-color: rgba(0,0,0,0.03);
-  }
+  margin-bottom: $spacing-md;
 }
 
 .state-message {
@@ -275,76 +201,80 @@ $badge-urgente-text: #991b1b;
   padding: $spacing-xl;
 }
 
-/* Desktop only : visible au-dessus de 768px */
 .desktop-only {
   display: block;
-}
-@media (max-width: $breakpoint-tablet) {
-  .desktop-only {
-    display: none !important;
+  @media (max-width: $breakpoint-tablet) {
+    display: none;
   }
 }
 
-/* Mobile only : caché par défaut, visible en dessous de 768px */
-.mobile-only {
-  display: none;
-}
-@media (max-width: $breakpoint-tablet) {
-  .mobile-only {
-    display: block;
+.empty-state {
+  text-align: center;
+  margin-top: $spacing-xl;
+  p {
+    color: $color-neutral-dark;
+    margin-bottom: $spacing-md;
   }
 }
 
-.table-wrapper {
-  background: $color-white;
-  border: 1px solid $color-border;
+.list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ticket-item {
+  display: flex;
+  align-items: center;
+  padding: $spacing-sm $spacing-xs;
   border-radius: $border-radius;
-  overflow-x: auto;
-}
-
-.tickets-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-
-  th, td {
-    padding: 0.75rem 1rem;
-    text-align: left;
-    border-bottom: 1px solid $color-border;
-    white-space: nowrap;
-  }
-
-  th {
-    font-weight: 600;
-    color: $color-primary;
-    background-color: $color-neutral-light;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .action-col {
-    text-align: right;
-    width: 160px;
-  }
-}
-
-.ticket-row {
   cursor: pointer;
   transition: background-color 0.1s;
+  border: 1px solid transparent;
   &:hover {
     background-color: $color-neutral-light;
   }
-  &:last-child td {
-    border-bottom: none;
+  &.is-active {
+    background-color: rgba($color-accent, 0.06);
+    border-color: $color-accent;
   }
 }
 
-.col-id { width: 60px; color: $color-neutral-dark; font-size: 0.85rem; }
-.col-site { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
-.col-titre { max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
-.col-origine { width: 80px; }
-.col-action { text-align: right; }
+.item-id {
+  font-size: 0.8rem;
+  color: $color-neutral-dark;
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.item-content {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.item-title {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: $color-primary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-meta {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.item-date {
+  font-size: 0.8rem;
+  color: $color-neutral-dark;
+}
 
 .badge {
   display: inline-block;
@@ -352,109 +282,123 @@ $badge-urgente-text: #991b1b;
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
-  text-transform: capitalize;
 }
 
-.badge-nouveau { background-color: #dbeafe; color: #1e40af; }
-.badge-assigne { background-color: #fef3c7; color: #92400e; }
-.badge-resolu { background-color: #dcfce7; color: #166534; }
+.badge-nouveau {
+  background-color: $badge-nouveau-bg;
+  color: $badge-nouveau-text;
+}
+.badge-assigne {
+  background-color: $badge-assigne-bg;
+  color: $badge-assigne-text;
+}
+.badge-resolu {
+  background-color: $badge-resolu-bg;
+  color: $badge-resolu-text;
+}
 
-.badge-basse { background-color: $badge-basse-bg; color: $badge-basse-text; }
-.badge-normale { background-color: $badge-normale-bg; color: $badge-normale-text; }
-.badge-urgente { background-color: $badge-urgente-bg; color: $badge-urgente-text; }
-
-.origine-tag {
-  font-size: 0.8rem;
-  color: $color-neutral-dark;
-  &.automatique {
-    color: $color-accent;
-    font-weight: 500;
+// Détail panel
+.ticket-detail-panel {
+  padding: $spacing-lg;
+  overflow-y: auto;
+  background: $color-white;
+  @media (max-width: $breakpoint-tablet) {
+    display: none;
+    padding: $spacing-md;
+    &.is-visible-mobile {
+      display: block;
+    }
   }
 }
 
-.btn {
-  padding: 0.35rem 0.9rem;
-  border-radius: $border-radius;
-  font-family: $font-family;
-  font-size: 0.85rem;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+.detail-header {
+  margin-bottom: $spacing-md;
 }
 
-.btn-take {
+.btn-retour {
+  background: none;
+  border: none;
+  color: $color-accent;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.detail-top {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+  h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: $color-primary;
+    margin: 0;
+  }
+}
+
+.detail-infos {
+  margin-bottom: $spacing-md;
+  p {
+    margin-bottom: 0.4rem;
+    font-size: 0.9rem;
+  }
+}
+
+.detail-description {
+  margin-bottom: $spacing-md;
+  h4 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+  }
+  p {
+    white-space: pre-wrap;
+    font-size: 0.9rem;
+    color: $color-neutral-dark;
+  }
+}
+
+.detail-history {
+  h4 {
+    margin-bottom: 0.5rem;
+  }
+  ul {
+    list-style: none;
+    padding: 0;
+    li {
+      padding: 0.4rem 0;
+      border-bottom: 1px solid $color-border;
+      font-size: 0.85rem;
+    }
+  }
+}
+
+.history-action {
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+// Button for empty state only (new ticket creation)
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: $border-radius;
+  font-family: $font-family;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-primary {
   background-color: $color-accent;
   color: white;
   &:hover {
     background-color: color.adjust($color-accent, $lightness: -8%);
-  }
-}
-
-.btn-detail {
-  background: none;
-  border: 1px solid $color-border;
-  color: $color-neutral-dark;
-  &:hover {
-    background-color: $color-neutral-light;
-  }
-}
-
-// Mobile cards
-.mobile-cards {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-md;
-}
-
-.ticket-card {
-  background: $color-white;
-  border: 1px solid $color-border;
-  border-radius: $border-radius;
-  padding: $spacing-md;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  cursor: pointer;
-}
-
-.card-top {
-  display: flex;
-  align-items: baseline;
-  gap: $spacing-sm;
-  margin-bottom: $spacing-sm;
-}
-
-.card-id {
-  font-size: 0.8rem;
-  color: $color-neutral-dark;
-  font-weight: 500;
-}
-
-.card-titre {
-  font-weight: 600;
-  color: $color-primary;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.card-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $spacing-xs;
-  margin-bottom: $spacing-sm;
-  align-items: center;
-  font-size: 0.8rem;
-}
-
-.card-site {
-  font-size: 0.8rem;
-  color: $color-neutral-dark;
-  margin-left: auto;
-}
-
-.card-action {
-  margin-top: $spacing-sm;
-  .btn {
-    width: 100%;
   }
 }
 </style>

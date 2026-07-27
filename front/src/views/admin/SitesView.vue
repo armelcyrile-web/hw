@@ -1,276 +1,243 @@
-<!-- src/views/admin/StatsView.vue -->
+<!-- src/views/admin/SitesView.vue -->
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import api from '@/services/api'
-import { notifyError } from '@/services/alert'
-import { Line, Bar } from 'vue-chartjs'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler // ajouté pour corriger l'erreur
-} from 'chart.js'
+import { notifySuccess, notifyError, confirmAction } from '@/services/alert'
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler // enregistrement du plugin
-)
-
-const stats = ref(null)
+// État
+const sites = ref([])
 const loading = ref(true)
+const showModal = ref(false)
+const isEditing = ref(false)
+const editingSiteId = ref(null)
 
-async function fetchStats() {
+const clients = ref([])
+
+const form = reactive({
+  nom: '',
+  url: '',
+  client_id: ''
+})
+
+// Récupération des sites
+async function fetchSites() {
   loading.value = true
   try {
-    const response = await api.get('/admin/stats')
-    stats.value = response.data
+    const response = await api.get('/sites')
+    sites.value = response.data.data
   } catch (error) {
-    notifyError('Impossible de charger les statistiques.')
+    notifyError('Erreur lors du chargement des sites.')
   } finally {
     loading.value = false
   }
 }
 
-// Cartes de synthèse
-const resume = computed(() => stats.value?.resume || {})
-
-// Formater le temps moyen
-function formatTemps(minutes) {
-  if (!minutes) return '0 min'
-  if (minutes >= 60) {
-    const h = Math.floor(minutes / 60)
-    const m = minutes % 60
-    return `${h}h ${m > 0 ? m + 'min' : ''}`
+// Récupération des clients via l'endpoint admin
+async function fetchClients() {
+  try {
+    const response = await api.get('/admin/users', { params: { role: 'client' } })
+    clients.value = response.data.data
+  } catch (error) {
+    notifyError('Impossible de charger la liste des clients.')
   }
-  return `${minutes} min`
 }
 
-// Graphique d'évolution
-const evolutionData = computed(() => {
-  if (!stats.value?.evolution_tickets) return null
-  const dates = stats.value.evolution_tickets.map(item => {
-    const d = new Date(item.date)
-    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+// Ouvrir la modale en mode création
+function openCreateModal() {
+  isEditing.value = false
+  editingSiteId.value = null
+  form.nom = ''
+  form.url = ''
+  form.client_id = clients.value.length === 1 ? clients.value[0].id : ''
+  showModal.value = true
+}
+
+// Ouvrir la modale en mode édition
+function openEditModal(site) {
+  isEditing.value = true
+  editingSiteId.value = site.id
+  form.nom = site.nom
+  form.url = site.url
+  form.client_id = site.client?.id ?? ''
+  showModal.value = true
+}
+
+function closeModal() {
+  showModal.value = false
+}
+
+// Soumettre le formulaire (création ou mise à jour)
+async function submitForm() {
+  if (!form.nom || !form.url || !form.client_id) {
+    notifyError('Veuillez remplir tous les champs.')
+    return
+  }
+
+  const confirmed = await confirmAction({
+    titre: isEditing.value ? 'Modifier le site' : 'Ajouter un site',
+    texte: isEditing.value ? 'Confirmer la modification de ce site ?' : 'Confirmer l\'ajout de ce site ?',
+    texteConfirmation: 'Confirmer'
   })
-  const totals = stats.value.evolution_tickets.map(item => item.total)
-  return {
-    labels: dates,
-    datasets: [
-      {
-        label: 'Tickets créés',
-        data: totals,
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37, 99, 235, 0.05)',
-        pointBackgroundColor: '#2563eb',
-        pointRadius: 2,
-        pointHoverRadius: 4,
-        borderWidth: 2,
-        tension: 0.3,
-        fill: true // maintenant supporté grâce à Filler
-      }
-    ]
-  }
-})
+  if (!confirmed) return
 
-const evolutionOptions = computed(() => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      display: false
+  try {
+    if (isEditing.value) {
+      await api.put(`/sites/${editingSiteId.value}`, form)
+      notifySuccess('Site modifié avec succès.')
+    } else {
+      await api.post('/sites', form)
+      notifySuccess('Site ajouté avec succès.')
     }
-  },
-  scales: {
-    x: {
-      ticks: {
-        maxTicksLimit: 10,
-        font: { size: 10 }
-      },
-      grid: {
-        display: false
-      }
-    },
-    y: {
-      beginAtZero: true,
-      ticks: {
-        precision: 0,
-        font: { size: 10 }
-      }
-    }
-  }
-}))
-
-// Graphique de charge par technicien
-const chargeData = computed(() => {
-  if (!stats.value?.charge_par_technicien?.length) return null
-  const labels = stats.value.charge_par_technicien.map(t => `${t.prenom} ${t.nom}`)
-  const assignes = stats.value.charge_par_technicien.map(t => t.tickets_assignes)
-  const resolus = stats.value.charge_par_technicien.map(t => t.tickets_resolus)
-  return {
-    labels,
-    datasets: [
-      {
-        label: 'Tickets assignés',
-        data: assignes,
-        backgroundColor: 'rgba(37, 99, 235, 0.7)',
-        borderRadius: 4
-      },
-      {
-        label: 'Tickets résolus',
-        data: resolus,
-        backgroundColor: 'rgba(16, 185, 129, 0.7)',
-        borderRadius: 4
-      }
-    ]
-  }
-})
-
-const chargeOptions = computed(() => ({
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'bottom',
-      labels: {
-        boxWidth: 12,
-        padding: 15,
-        font: { size: 11 }
-      }
-    }
-  },
-  scales: {
-    x: {
-      ticks: {
-        font: { size: 10 }
-      },
-      grid: {
-        display: false
-      }
-    },
-    y: {
-      beginAtZero: true,
-      ticks: {
-        precision: 0,
-        font: { size: 10 }
-      }
-    }
-  }
-}))
-
-// Répartition par priorité et statut
-const repartitionPriorite = computed(() => {
-  if (!stats.value?.repartition_par_priorite) return {}
-  return stats.value.repartition_par_priorite
-})
-
-const repartitionStatut = computed(() => {
-  if (!stats.value?.repartition_par_statut) return {}
-  return stats.value.repartition_par_statut
-})
-
-function prioriteBadgeClass(priorite) {
-  switch (priorite) {
-    case 'basse': return 'badge-basse'
-    case 'normale': return 'badge-normale'
-    case 'urgente': return 'badge-urgente'
-    default: return ''
+    closeModal()
+    await fetchSites()
+  } catch (error) {
+    const message = error.response?.data?.message || 'Erreur lors de l\'enregistrement.'
+    notifyError(message)
   }
 }
 
-function statutBadgeClass(statut) {
+// Supprimer un site
+async function deleteSite(site) {
+  const confirmed = await confirmAction({
+    titre: 'Supprimer le site',
+    texte: `Êtes-vous sûr de vouloir supprimer définitivement le site "${site.nom}" ? Cette action est irréversible.`,
+    texteConfirmation: 'Supprimer'
+  })
+  if (!confirmed) return
+
+  try {
+    await api.delete(`/sites/${site.id}`)
+    notifySuccess('Site supprimé.')
+    await fetchSites()
+  } catch (error) {
+    notifyError(error.response?.data?.message || 'Erreur lors de la suppression.')
+  }
+}
+
+// Classes de badge
+function disponibiliteClass(statut) {
   switch (statut) {
-    case 'nouveau': return 'badge-nouveau'
-    case 'assigne': return 'badge-assigne'
-    case 'resolu': return 'badge-resolu'
-    default: return ''
+    case 'en_ligne': return 'badge-success'
+    case 'hors_ligne': return 'badge-danger'
+    default: return 'badge-neutral'
   }
 }
 
-onMounted(fetchStats)
+function formaterDate(dateString) {
+  if (!dateString) return 'Jamais'
+  return new Date(dateString).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+onMounted(async () => {
+  await Promise.all([fetchSites(), fetchClients()])
+})
 </script>
 
 <template>
-  <div class="stats-view">
-    <h2 class="page-title">Statistiques</h2>
+  <div class="sites-view">
+    <div class="top-bar">
+      <h2 class="page-title">Gestion des sites</h2>
+      <button class="btn btn-primary" @click="openCreateModal">+ Ajouter un site</button>
+    </div>
 
-    <div v-if="loading" class="state-message">Chargement des statistiques...</div>
+    <div v-if="loading" class="state-message">Chargement...</div>
+    <template v-else>
+      <div v-if="sites.length === 0" class="state-message">Aucun site enregistré.</div>
 
-    <template v-else-if="stats">
-      <!-- Cartes de synthèse -->
-      <div class="cards-grid">
-        <div class="card">
-          <span class="card-value">{{ resume.total_tickets }}</span>
-          <span class="card-label">Total tickets</span>
-        </div>
-        <div class="card">
-          <span class="card-value">{{ resume.tickets_resolus_ce_mois }}</span>
-          <span class="card-label">Résolus ce mois</span>
-        </div>
-        <div class="card">
-          <span class="card-value">{{ formatTemps(resume.temps_moyen_resolution_minutes) }}</span>
-          <span class="card-label">Temps moyen résolution</span>
-        </div>
-        <div class="card">
-          <span class="card-value">{{ resume.taux_disponibilite_global }}%</span>
-          <span class="card-label">Disponibilité globale</span>
-        </div>
+      <!-- Tableau desktop -->
+      <div v-else class="table-wrapper desktop-only">
+        <table class="sites-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>URL</th>
+              <th>Statut</th>
+              <th>Client</th>
+              <th>Dernière vérification</th>
+              <th class="actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="site in sites" :key="site.id" class="site-row">
+              <td class="col-nom">{{ site.nom }}</td>
+              <td class="col-url">{{ site.url }}</td>
+              <td>
+                <span class="badge" :class="disponibiliteClass(site.statut_disponibilite)">
+                  {{ site.statut_disponibilite === 'en_ligne' ? 'En ligne' : site.statut_disponibilite === 'hors_ligne' ? 'Hors ligne' : 'Inconnu' }}
+                </span>
+              </td>
+              <td>{{ site.client?.nom }} {{ site.client?.prenom }}</td>
+              <td>{{ formaterDate(site.date_derniere_verification) }}</td>
+              <td class="col-actions">
+                <button class="btn btn-edit" @click="openEditModal(site)">Modifier</button>
+                <button class="btn btn-delete" @click="deleteSite(site)">Supprimer</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <!-- Graphiques -->
-      <div class="charts-section">
-        <div class="chart-container">
-          <h3>Évolution des tickets (30 jours)</h3>
-          <div class="chart-wrapper">
-            <Line v-if="evolutionData" :data="evolutionData" :options="evolutionOptions" />
+      <!-- Cartes mobile -->
+      <div class="mobile-cards mobile-only">
+        <div v-for="site in sites" :key="site.id" class="site-card">
+          <div class="card-top">
+            <span class="card-nom">{{ site.nom }}</span>
+            <span class="badge" :class="disponibiliteClass(site.statut_disponibilite)">
+              {{ site.statut_disponibilite === 'en_ligne' ? 'En ligne' : site.statut_disponibilite === 'hors_ligne' ? 'Hors ligne' : 'Inconnu' }}
+            </span>
           </div>
-        </div>
-
-        <div class="chart-container">
-          <h3>Charge par technicien</h3>
-          <div class="chart-wrapper">
-            <Bar v-if="chargeData" :data="chargeData" :options="chargeOptions" />
-            <p v-else class="empty-message">Aucun technicien enregistré.</p>
+          <div class="card-info">
+            <div>{{ site.url }}</div>
+            <div>Client : {{ site.client?.nom }} {{ site.client?.prenom }}</div>
+            <div>Vérifié : {{ formaterDate(site.date_derniere_verification) }}</div>
           </div>
-        </div>
-      </div>
-
-      <!-- Répartition -->
-      <div class="repartition-section">
-        <div class="repartition-block">
-          <h4>Répartition par priorité</h4>
-          <ul class="badge-list">
-            <li v-for="(count, priorite) in repartitionPriorite" :key="priorite">
-              <span class="badge" :class="prioriteBadgeClass(priorite)">{{ priorite }}</span>
-              <span class="count">{{ count }}</span>
-            </li>
-          </ul>
-        </div>
-        <div class="repartition-block">
-          <h4>Répartition par statut</h4>
-          <ul class="badge-list">
-            <li v-for="(count, statut) in repartitionStatut" :key="statut">
-              <span class="badge" :class="statutBadgeClass(statut)">{{ statut }}</span>
-              <span class="count">{{ count }}</span>
-            </li>
-          </ul>
+          <div class="card-actions">
+            <button class="btn btn-edit" @click="openEditModal(site)">Modifier</button>
+            <button class="btn btn-delete" @click="deleteSite(site)">Supprimer</button>
+          </div>
         </div>
       </div>
     </template>
 
-    <div v-else class="state-message">Impossible de charger les statistiques.</div>
+    <!-- Modale -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>{{ isEditing ? 'Modifier le site' : 'Ajouter un site' }}</h3>
+              <button class="close-btn" @click="closeModal">✕</button>
+            </div>
+            <form @submit.prevent="submitForm" class="modal-body">
+              <div class="form-group">
+                <label for="nom">Nom du site</label>
+                <input id="nom" v-model="form.nom" type="text" required class="form-input" />
+              </div>
+              <div class="form-group">
+                <label for="url">URL</label>
+                <input id="url" v-model="form.url" type="url" required class="form-input" />
+              </div>
+              <div class="form-group">
+                <label for="client_id">Client associé</label>
+                <select id="client_id" v-model="form.client_id" required class="form-select">
+                  <option value="" disabled>Sélectionner un client</option>
+                  <option v-for="client in clients" :key="client.id" :value="client.id">
+                    {{ client.nom }} {{ client.prenom }}
+                  </option>
+                </select>
+                <p v-if="clients.length === 0 && !loading" class="hint">Aucun client trouvé.</p>
+              </div>
+              <div class="modal-actions">
+                <button type="button" class="btn btn-cancel" @click="closeModal">Annuler</button>
+                <button type="submit" class="btn btn-primary">
+                  {{ isEditing ? 'Enregistrer' : 'Ajouter' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -278,21 +245,14 @@ onMounted(fetchStats)
 @use "sass:color";
 @use '@/assets/styles/variables.scss' as *;
 
-// Badge colors (same as other views)
-$badge-basse-bg: #f3f4f6;
-$badge-basse-text: #4b5563;
-$badge-normale-bg: #e0f2fe;
-$badge-normale-text: #075985;
-$badge-urgente-bg: #fee2e2;
-$badge-urgente-text: #991b1b;
-$badge-nouveau-bg: #dbeafe;
-$badge-nouveau-text: #1e40af;
-$badge-assigne-bg: #fef3c7;
-$badge-assigne-text: #92400e;
-$badge-resolu-bg: #dcfce7;
-$badge-resolu-text: #166534;
+$badge-success-bg: #dcfce7;
+$badge-success-text: #166534;
+$badge-danger-bg: #fee2e2;
+$badge-danger-text: #991b1b;
+$badge-neutral-bg: #f3f4f6;
+$badge-neutral-text: #4b5563;
 
-.stats-view {
+.sites-view {
   background-color: $color-neutral-light;
   padding: $spacing-lg $spacing-md;
   min-height: 100%;
@@ -300,11 +260,20 @@ $badge-resolu-text: #166534;
   margin: 0 auto;
 }
 
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-lg;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
 .page-title {
   font-size: 1.5rem;
   font-weight: 600;
   color: $color-primary;
-  margin-bottom: $spacing-lg;
+  margin: 0;
 }
 
 .state-message {
@@ -313,140 +282,264 @@ $badge-resolu-text: #166534;
   padding: $spacing-xl;
 }
 
-// Cartes
-.cards-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: $spacing-md;
-  margin-bottom: $spacing-xl;
-
-  @media (max-width: $breakpoint-tablet) {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  @media (max-width: $breakpoint-mobile) {
-    grid-template-columns: 1fr;
+// Desktop only
+.desktop-only {
+  display: block;
+}
+@media (max-width: $breakpoint-tablet) {
+  .desktop-only {
+    display: none !important;
   }
 }
 
-.card {
+// Mobile only
+.mobile-only {
+  display: none;
+}
+@media (max-width: $breakpoint-tablet) {
+  .mobile-only {
+    display: block;
+  }
+}
+
+// Table
+.table-wrapper {
   background: $color-white;
   border: 1px solid $color-border;
   border-radius: $border-radius;
-  padding: $spacing-md;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  overflow-x: auto;
 }
 
-.card-value {
-  font-size: 1.8rem;
-  font-weight: 600;
-  color: $color-primary;
-  line-height: 1.2;
-}
-
-.card-label {
-  font-size: 0.85rem;
-  color: $color-neutral-dark;
-  margin-top: $spacing-xs;
-}
-
-// Graphiques
-.charts-section {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-lg;
-  margin-bottom: $spacing-xl;
-}
-
-.chart-container {
-  background: $color-white;
-  border: 1px solid $color-border;
-  border-radius: $border-radius;
-  padding: $spacing-md;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-
-  h3 {
-    font-size: 1rem;
+.sites-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  th, td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid $color-border;
+    white-space: nowrap;
+  }
+  th {
     font-weight: 600;
     color: $color-primary;
-    margin-bottom: $spacing-sm;
+    background-color: $color-neutral-light;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .actions-col {
+    text-align: right;
+    width: 160px;
   }
 }
 
-.chart-wrapper {
-  height: 300px;
-  @media (max-width: $breakpoint-mobile) {
-    height: 250px;
+.site-row {
+  &:hover {
+    background-color: $color-neutral-light;
+  }
+  &:last-child td {
+    border-bottom: none;
   }
 }
 
-.empty-message {
-  text-align: center;
-  color: $color-neutral-dark;
-  padding: $spacing-lg;
+.col-nom { font-weight: 500; color: $color-primary; }
+.col-url { color: $color-neutral-dark; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.col-actions {
+  text-align: right;
+  white-space: nowrap;
 }
 
-// Répartition
-.repartition-section {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: $spacing-md;
-  @media (max-width: $breakpoint-tablet) {
-    grid-template-columns: 1fr;
-  }
-}
-
-.repartition-block {
-  background: $color-white;
-  border: 1px solid $color-border;
-  border-radius: $border-radius;
-  padding: $spacing-md;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-.repartition-block h4 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: $color-primary;
-  margin-bottom: $spacing-sm;
-}
-
-.badge-list {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.badge-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
+// Badges
 .badge {
   display: inline-block;
   padding: 0.15rem 0.6rem;
   border-radius: 12px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  text-transform: capitalize;
+}
+.badge-success { background-color: $badge-success-bg; color: $badge-success-text; }
+.badge-danger { background-color: $badge-danger-bg; color: $badge-danger-text; }
+.badge-neutral { background-color: $badge-neutral-bg; color: $badge-neutral-text; }
+
+// Buttons
+.btn {
+  padding: 0.4rem 0.9rem;
+  border-radius: $border-radius;
+  font-family: $font-family;
+  font-size: 0.85rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  background: none;
+  color: $color-neutral-dark;
+}
+.btn-primary {
+  background-color: $color-accent;
+  color: white;
+  &:hover {
+    background-color: color.adjust($color-accent, $lightness: -8%);
+  }
+}
+.btn-edit {
+  border: 1px solid $color-border;
+  &:hover {
+    background-color: $color-neutral-light;
+  }
+}
+.btn-delete {
+  color: $color-danger;
+  &:hover {
+    background-color: $badge-danger-bg;
+  }
+}
+.btn-cancel {
+  border: 1px solid $color-border;
+  &:hover {
+    background-color: $color-neutral-light;
+  }
 }
 
-.badge-basse { background-color: $badge-basse-bg; color: $badge-basse-text; }
-.badge-normale { background-color: $badge-normale-bg; color: $badge-normale-text; }
-.badge-urgente { background-color: $badge-urgente-bg; color: $badge-urgente-text; }
-.badge-nouveau { background-color: $badge-nouveau-bg; color: $badge-nouveau-text; }
-.badge-assigne { background-color: $badge-assigne-bg; color: $badge-assigne-text; }
-.badge-resolu { background-color: $badge-resolu-bg; color: $badge-resolu-text; }
+// Mobile cards
+.mobile-cards {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
 
-.count {
+.site-card {
+  background: $color-white;
+  border: 1px solid $color-border;
+  border-radius: $border-radius;
+  padding: $spacing-md;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+}
+.card-nom {
   font-weight: 600;
-  font-size: 1rem;
   color: $color-primary;
+}
+.card-info {
+  font-size: 0.8rem;
+  color: $color-neutral-dark;
+  margin-bottom: $spacing-sm;
+  > div {
+    margin-bottom: 2px;
+  }
+}
+.card-actions {
+  display: flex;
+  gap: $spacing-sm;
+  justify-content: flex-end;
+}
+
+// Modale
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: $spacing-md;
+}
+
+.modal-content {
+  background: $color-white;
+  border-radius: $border-radius;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: $spacing-md $spacing-lg;
+  border-bottom: 1px solid $color-border;
+  h3 {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: $color-neutral-dark;
+}
+
+.modal-body {
+  padding: $spacing-lg;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  overflow-y: auto;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  label {
+    font-weight: 500;
+    color: $color-primary;
+    font-size: 0.9rem;
+  }
+}
+
+.form-input, .form-select {
+  padding: 0.6rem;
+  border: 1px solid $color-border;
+  border-radius: $border-radius;
+  font-family: $font-family;
+  font-size: 0.9rem;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: $color-neutral-dark;
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+  @media (max-width: $breakpoint-mobile) {
+    flex-direction: column;
+    button {
+      width: 100%;
+    }
+  }
+}
+
+// Transition modale
+.modal-enter-active, .modal-leave-active {
+  transition: opacity 0.2s ease;
+  .modal-content {
+    transition: transform 0.2s ease;
+  }
+}
+.modal-enter-from, .modal-leave-to {
+  opacity: 0;
+  .modal-content {
+    transform: scale(0.95);
+  }
 }
 </style>

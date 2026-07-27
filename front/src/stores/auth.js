@@ -5,8 +5,12 @@ import { ref, computed } from 'vue'
 import api from '@/services/api'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem('token') || null)
-  const user = ref(null)
+  // Restauration synchrone depuis localStorage
+  const savedToken = localStorage.getItem('token')
+  const savedUser = localStorage.getItem('user')
+
+  const token = ref(savedToken || null)
+  const user = ref(savedUser ? JSON.parse(savedUser) : null)
 
   const isAuthenticated = computed(() => !!token.value && !!user.value)
   const isClient = computed(() => user.value?.role === 'client')
@@ -18,7 +22,10 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await api.post('/login', { email, password })
       token.value = response.data.token
       user.value = response.data.user
+
+      // Persistance dans localStorage
       localStorage.setItem('token', token.value)
+      localStorage.setItem('user', JSON.stringify(user.value))
       return true
     } catch (error) {
       throw error
@@ -34,31 +41,28 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = null
       user.value = null
       localStorage.removeItem('token')
+      localStorage.removeItem('user')
     }
   }
 
+  // Rafraîchissement optionnel (non bloquant au démarrage)
   async function fetchUser() {
     try {
       const response = await api.get('/me')
       user.value = response.data.user
+      localStorage.setItem('user', JSON.stringify(user.value))
     } catch (error) {
       // Token invalide ou expiré
       token.value = null
       user.value = null
       localStorage.removeItem('token')
+      localStorage.removeItem('user')
       throw error
     }
   }
 
-  async function initialize() {
-    if (token.value) {
-      try {
-        await fetchUser()
-      } catch {
-        // Déjà nettoyé dans fetchUser
-      }
-    }
-  }
+  // Plus nécessaire, la restauration est synchrone
+  // async function initialize() { ... }
 
   return {
     token,
@@ -69,7 +73,6 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     login,
     logout,
-    fetchUser,
-    initialize
+    fetchUser
   }
 })
