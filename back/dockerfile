@@ -1,0 +1,43 @@
+# Dockerfile
+FROM php:8.2-fpm
+
+# Dépendances systèmes nécessaires
+RUN apt-get update && apt-get install -y \
+    nginx \
+    supervisor \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    curl \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
+
+# Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Configuration Nginx
+COPY nginx.conf /etc/nginx/sites-enabled/default
+
+# Configuration PHP
+RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+
+# Supervisor pour gérer Nginx + PHP-FPM
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Répertoire de l'application
+WORKDIR /var/www/html
+COPY . /var/www/html
+
+# Installation des dépendances
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Permissions Laravel
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+
+# Génération de la clé (sera écrasée par la variable d'environnement APP_KEY au runtime)
+RUN php artisan key:generate --force
+
+EXPOSE 80
+
+CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
