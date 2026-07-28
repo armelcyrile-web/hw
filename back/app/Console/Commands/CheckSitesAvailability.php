@@ -1,7 +1,5 @@
 <?php
 
-// app/Console/Commands/CheckSitesAvailability.php
-
 namespace App\Console\Commands;
 
 use App\Enums\OrigineTicket;
@@ -94,10 +92,7 @@ class CheckSitesAvailability extends Command
                             // Notification aux techniciens et administrateurs (pas au client pour une détection automatique)
                             $staff = User::whereIn('role', ['technicien', 'administrateur'])->get();
                             Notification::send($staff, new NouveauTicketNotification($ticketCree));
-                            // Variante : si l'on souhaitait aussi prévenir le client propriétaire, décommenter :
-                            // if ($ticketCree->site->client) {
-                            //     $ticketCree->site->client->notify(new NouveauTicketNotification($ticketCree));
-                            // }
+
                         } catch (\Exception $e) {
                             Log::error("Échec de la création du ticket pour le site {$site->nom} : ".$e->getMessage());
                             $this->error("Erreur création ticket pour {$site->nom}");
