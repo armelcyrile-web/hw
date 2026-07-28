@@ -13,7 +13,7 @@ services:
         value: pgsql
       - key: QUEUE_CONNECTION
         value: sync
-      - key: DATABASE_URL
+      - key: DB_URL
         fromDatabase:
           name: hostwatch-db
           property: connectionString
